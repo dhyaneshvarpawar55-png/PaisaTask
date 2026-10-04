@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PaisaTask Admin</title>
+<style>
+:root{--bg:#EAF3F0;--card:#fff;--ink:#0F2A33;--mute:#5B7279;--gold:#F2B01E;--goldink:#3A2900;--line:#CFE0DB;--ok:#1C8A5B;--bad:#C4412F;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#0B1A1F;--card:#13272E;--ink:#E6F2EF;--mute:#8FA8AE;--line:#24404A;--ok:#4CD39A;--bad:#FF7A66}}
+*{box-sizing:border-box}
+body{margin:0 auto;background:var(--bg);color:var(--ink);font-family:system-ui,sans-serif;max-width:900px;padding:16px}
+header{display:flex;align-items:center;gap:10px}h1{font-size:20px;margin:0;flex:1}
+h2{font-size:16px;margin:20px 0 10px}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:8px 12px;cursor:pointer;background:var(--gold);color:var(--goldink)}
+button.g{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+button.ok{background:var(--ok);color:#fff}button.bad{background:var(--bad);color:#fff}
+button:disabled{opacity:.4}
+select,input{font:inherit;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+nav{display:flex;gap:6px;margin:14px 0}
+nav button{background:var(--card);color:var(--mute);border:1px solid var(--line)}nav button.on{background:var(--ink);color:var(--bg)}
+.tab{display:none}.tab.on{display:block}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.st{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.st small{color:var(--mute)}.st b{display:block;font-size:26px;margin-top:4px}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:520px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line)}th{color:var(--mute)}tr:last-child td{border-bottom:0}
+.tag{padding:3px 9px;border-radius:20px;font-size:12px;font-weight:800;background:var(--line)}
+.tag.pending{background:var(--gold);color:var(--goldink)}.tag.paid{background:var(--ok);color:#fff}.tag.rejected{background:var(--bad);color:#fff}
+#login{text-align:center;margin-top:20vh}#login button{width:100%;padding:14px;margin-top:16px}
+#app{display:none}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:30px;font-weight:700;font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div id="login">
+  <h1 style="font-size:26px">PaisaTask Admin</h1>
+  <small style="color:var(--mute)">Only the admin Google account can enter.</small>
+  <button id="signin">Sign in with Google</button>
+</div>
+
+<div id="app">
+  <header><h1>PaisaTask Admin</h1><span id="me" style="color:var(--mute);font-size:13px"></span><button class="g" id="out">Sign out</button></header>
+  <nav id="nav"><button class="on" data-t="ov">Overview</button><button data-t="wd">Withdrawals</button><button data-t="us">Users</button></nav>
+
+  <section class="tab on" id="ov"><div class="stats" id="stats"></div></section>
+
+  <section class="tab" id="wd">
+    <select id="wf"><option value="pending">Pending</option><option value="paid">Paid</option><option value="rejected">Rejected</option><option value="all">All</option></select>
+    <div class="wrap"><table><thead><tr><th>User</th><th>Send to</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody id="wbody"></tbody></table></div>
+  </section>
+
+  <section class="tab" id="us">
+    <input id="uq" placeholder="Search user">
+    <div class="wrap"><table><thead><tr><th>User</th><th>Coins</th><th>Lifetime</th><th>Streak</th></tr></thead><tbody id="ubody"></tbody></table></div>
+  </section>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey:"AIzaSyBD0b8ikf9yWH3vdjriufn8ItnXjY2eH14",
+  authDomain:"paisatask-d608e.firebaseapp.com",
+  projectId:"paisatask-d608e",
+  storageBucket:"paisatask-d608e.firebasestorage.app",
+  messagingSenderId:"90134169824",
+  appId:"1:90134169824:web:6135a85526dec90fe32885"
+});
+const auth=firebase.auth(),db=firebase.firestore(),inc=firebase.firestore.FieldValue.increment;
+const ADMIN='dhyaneshvarpawar55@gmail.com',RATE=100;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200)}
+async function run(f){try{await f()}catch(e){toast(e.message||'Error')}}
+let W=[],US=[],started=false;
+
+$('signin').onclick=()=>run(()=>auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()));
+$('out').onclick=()=>auth.signOut();
+auth.onAuthStateChanged(u=>{
+  if(!u){$('login').style.display='block';$('app').style.display='none';return}
+  if(u.email!==ADMIN){toast('Not an admin account');auth.signOut();return}
+  $('login').style.display='none';$('app').style.display='block';$('me').textContent=u.email;
+  if(started)return;started=true;
+  db.collection('withdrawals').orderBy('created','desc').onSnapshot(s=>{W=s.docs.map(d=>({id:d.id,...d.data()}));render()},e=>toast(e.message));
+  db.collection('users').onSnapshot(s=>{US=s.docs.map(d=>({id:d.id,...d.data()}));render()},e=>toast(e.message));
+});
+$('nav').onclick=e=>{
+  const t=e.target.dataset.t;if(!t)return;
+  document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('on',s.id===t));
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b===e.target));
+};
+function render(){
+  const p=W.filter(w=>w.status==='pending'),sum=a=>a.reduce((x,w)=>x+(+w.rs||0),0);
+  $('stats').innerHTML=
+   '<div class="st"><small>Pending payouts</small><b>₹'+sum(p).toFixed(0)+'</b></div>'+
+   '<div class="st"><small>Pending requests</small><b>'+p.length+'</b></div>'+
+   '<div class="st"><small>Paid so far</small><b>₹'+sum(W.filter(w=>w.status==='paid')).toFixed(0)+'</b></div>'+
+   '<div class="st"><small>Users</small><b>'+US.length+'</b></div>';
+  const f=$('wf').value;
+  $('wbody').innerHTML=W.filter(w=>f==='all'||w.status===f).map(w=>
+   '<tr><td>'+esc(w.name)+'</td><td>'+esc(w.method)+'<br><small>'+esc(w.to)+'</small></td><td>₹'+esc((+w.rs).toFixed(2))+'</td><td><span class="tag '+esc(w.status)+'">'+esc(w.status)+'</span></td><td>'+
+   (w.status==='pending'?'<button class="ok" data-a="pay" data-i="'+esc(w.id)+'">Mark paid</button> <button class="bad" data-a="rej" data-i="'+esc(w.id)+'">Reject</button>':'')+'</td></tr>').join('')||'<tr><td colspan="5">Nothing here</td></tr>';
+  const q=$('uq').value.toLowerCase();
+  $('ubody').innerHTML=US.filter(u=>(u.name||'').toLowerCase().includes(q)).sort((a,b)=>(b.life||0)-(a.life||0)).map(u=>
+   '<tr><td>'+esc(u.name)+'</td><td>'+esc(u.coins||0)+'</td><td>'+esc(u.life||0)+'</td><td>'+esc(u.streak||0)+'</td></tr>').join('')||'<tr><td colspan="4">No users yet</td></tr>';
+}
+$('wf').onchange=render;$('uq').oninput=render;
+document.addEventListener('click',e=>run(async()=>{
+  const a=e.target.dataset.a,id=e.target.dataset.i;if(!a)return;
+  const w=W.find(x=>x.id===id);if(!w||w.status!=='pending')return;
+  e.target.disabled=true;
+  const ref=db.collection('withdrawals').doc(id);
+  if(a==='pay'){await ref.update({status:'paid',paidAt:Date.now()});toast('Marked as paid')}
+  if(a==='rej'){
+    if(!confirm('Reject and return coins to the user?'))return;
+    const b=db.batch();
+    b.update(ref,{status:'rejected',rejectedAt:Date.now()});
+    b.update(db.collection('users').doc(w.uid),{coins:inc(Math.round(w.rs*RATE))});
+    await b.commit();toast('Rejected, coins returned');
+  }
+}));
+</script>
+</body>
+</html>
